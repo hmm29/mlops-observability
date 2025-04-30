@@ -4,7 +4,7 @@
 
 ### 🚀 Project Overview
 
-This project implements a modular, scalable MLOps observability platform designed for real-time model monitoring, data validation, and automated feedback loops. It’s engineered to meet the needs of modern AI teams operating at scale.
+This project implements a modular, scalable MLOps observability platform designed for real-time model monitoring, data validation, and automated feedback loops. It's engineered to meet the needs of modern AI teams operating at scale.
 
 ### 🏗️ Architecture
 
@@ -30,6 +30,42 @@ mlops-observability/
 │   ├── model_registry/
 │   └── dashboard/
 └── tests/
+```
+
+### Model Registry
+
+The Model Registry component provides a centralized repository for model versioning, metadata tracking, and lifecycle management. Key features include:
+
+- Model versioning and storage
+- Model metadata and lineage tracking
+- Performance metrics comparison between versions
+- Stage transitions (development → staging → production)
+- Integration with monitoring systems for observability
+
+#### Usage Example
+
+```python
+from src.model_registry.client import ModelRegistry
+from src.model_registry.version import compare_model_versions
+
+# Initialize registry client
+registry = ModelRegistry(tracking_uri="http://mlflow-server:5000")
+
+# Register a new model
+model_uri = registry.register_model(
+    model_path="s3://models/model.pkl",
+    name="fraud_detection",
+    tags={"algorithm": "xgboost", "owner": "data-science-team"}
+)
+
+# Compare different model versions
+comparison = compare_model_versions(
+    registry,
+    model_name="fraud_detection",
+    version1="1",
+    version2="2",
+    metric="auc"
+)
 ```
 
 ### ⚙️ Quickstart
