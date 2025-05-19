@@ -93,10 +93,13 @@ comparison = compare_model_versions(
 - [x] Model Registry implementation
 - [x] Data Validation (Drift Detection and Schema Validation)
 - [x] Unit tests for model registry
+- [x] Metrics Collection Service
+  - [x] Prometheus metrics collector
+  - [x] Model performance metrics
+  - [x] System health monitoring
 - [ ] Unit tests for data validation
 
 🚧 **In Progress**:
-- [ ] Monitoring implementation
 - [ ] Dashboard implementation
 - [ ] Unit tests for monitoring
 - [ ] Unit tests for dashboard
@@ -104,7 +107,6 @@ comparison = compare_model_versions(
 ### 📝 Next Steps
 
 1. Complete Monitoring Layer:
-   - [ ] Prometheus metrics collection
    - [ ] Alerting configuration
    - [ ] Metric visualization endpoints
 
@@ -122,4 +124,27 @@ comparison = compare_model_versions(
    - [ ] API documentation
    - [ ] User guides
    - [ ] Deployment guides
+
+### 📝 Technical Details - Metrics Collection
+
+The metrics collection service captures four critical aspects:
+
+1. **Operational Metrics**:
+   - Prediction counts
+   - Request latencies
+   - Error rates
+
+2. **Input Monitoring**:
+   - Feature value tracking
+   - Distribution shift detection
+
+3. **Performance Metrics**:
+   - Model quality metrics
+   - Drift scores
+
+4. **System Health**:
+   - API request metrics
+   - Service health monitoring
+
+This comprehensive approach helps identify whether issues are coming from the model itself, data quality problems, or infrastructure limitations - a distinction that's crucial for effective debugging in production environments.
 
