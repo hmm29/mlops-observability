@@ -97,6 +97,10 @@ comparison = compare_model_versions(
   - [x] Prometheus metrics collector
   - [x] Model performance metrics
   - [x] System health monitoring
+- [x] API Endpoints
+  - [x] FastAPI model serving
+  - [x] Prediction monitoring
+  - [x] Swagger UI documentation
 - [ ] Unit tests for data validation
 
 🚧 **In Progress**:
@@ -125,26 +129,24 @@ comparison = compare_model_versions(
    - [ ] User guides
    - [ ] Deployment guides
 
-### 📝 Technical Details - Metrics Collection
+### 📝 Technical Details - API Implementation
 
-The metrics collection service captures four critical aspects:
+The API implementation follows industry best practices:
 
-1. **Operational Metrics**:
-   - Prediction counts
-   - Request latencies
-   - Error rates
+1. **Monitoring Integration**:
+   - Decorator-based metrics collection
+   - Non-intrusive monitoring
+   - Maintainable metric system
 
-2. **Input Monitoring**:
-   - Feature value tracking
-   - Distribution shift detection
+2. **Validation Pipeline**:
+   - Early data rejection
+   - Bad data tracking
+   - Drift detection
 
-3. **Performance Metrics**:
-   - Model quality metrics
-   - Drift scores
+3. **Documentation**:
+   - Swagger UI integration
+   - Auto-generated documentation
+   - Interactive API testing
 
-4. **System Health**:
-   - API request metrics
-   - Service health monitoring
-
-This comprehensive approach helps identify whether issues are coming from the model itself, data quality problems, or infrastructure limitations - a distinction that's crucial for effective debugging in production environments.
+This architecture ensures robust monitoring while maintaining clean, maintainable code.
 
