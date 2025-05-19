@@ -1,3 +1,4 @@
+# tests/model_registry/test_model_registry.py
 import unittest
 from unittest.mock import patch, MagicMock
 from src.model_registry.client import ModelRegistry
