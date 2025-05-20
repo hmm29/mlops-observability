@@ -1,0 +1,84 @@
+apiVersion: 1
+
+groups:
+  - name: ModelMonitoring
+    folder: MLOps
+    interval: 60s
+    rules:
+      - name: HighFeatureDrift
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: Prometheus
+            model:
+              expr: max(model_drift_score{drift_method="ks_test"})
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            reducer: last
+            type: classic_conditions
+            expression: A
+            settings:
+              operator: gt
+              evaluator:
+                type: gt
+                params:
+                  - 0.05
+        noDataState: NoData
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: Feature drift detected
+          description: Feature drift score has exceeded the threshold of 0.05
+        
+      - name: HighErrorRate
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: Prometheus
+            model:
+              expr: sum(rate(model_prediction_errors[5m])) / sum(rate(model_prediction_count[5m])) * 100
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            reducer: last
+            type: classic_conditions
+            expression: A
+            settings:
+              operator: gt
+              evaluator:
+                type: gt
+                params:
+                  - 5
+        noDataState: NoData
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: High model error rate
+          description: Model prediction error rate has exceeded 5%
+          
+      - name: HighLatency
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: Prometheus
+            model:
+              expr: histogram_quantile(0.95, sum(rate(model_prediction_latency_seconds_bucket[5m])) by (le))
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            reducer: last
+            type: classic_conditions
+            expression: A
+            settings:
+              operator: gt
+              evaluator:
+                type: gt
+                params:
+                  - 0.5
+        noDataState: NoData
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: High model latency
+          description: 95th percentile model prediction latency has exceeded 500ms

@@ -1,0 +1,14 @@
+apiVersion: 1
+
+notifiers:
+  - name: Email Alerts
+    type: email
+    uid: email-notification
+    org_id: 1
+    is_default: true
+    settings:
+      addresses: mlops-alerts@example.com
+    secure_settings:
+      # These would need to be configured with real SMTP settings in production
+      user: ""
+      password: ""

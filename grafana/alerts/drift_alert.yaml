@@ -1,0 +1,10 @@
+name: Feature Drift Alert
+message: "Significant drift detected in features: {{ $labels.feature_name }}"
+query: |
+  model_drift_score{model_name="$model", version="$version", drift_method="ks_test"} > 0.05
+for: 5m
+labels:
+  severity: warning
+annotations:
+  summary: Feature drift detected
+  description: "The feature {{ $labels.feature_name }} is showing significant drift with score {{ $value }}"
