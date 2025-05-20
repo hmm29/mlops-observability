@@ -207,7 +207,29 @@ These tests confirm:
 
 Detailed testing documentation is available in [tests/README.md](tests/README.md).
 
-## 🔍 Usage Examples
+## 🔍 Usage
+
+### Making Predictions
+
+```python
+import requests
+import json
+
+# Send prediction request to the API
+url = "http://localhost:8000/predict"
+payload = {
+    "features": {
+        "feature1": 0.5,
+        "feature2": 1.0,
+        "feature3": "category_a"
+    },
+    "request_id": "test-123"
+}
+
+response = requests.post(url, json=payload)
+prediction = response.json()
+print(prediction)
+```
 
 ### Model Drift Monitoring
 
@@ -231,6 +253,53 @@ if results["drift_detected"]:
     print(f"Drift detected in features: {results['flagged_features']}")
 ```
 
+### Registering a New Model
+
+```python
+from src.model_registry.client import ModelRegistry
+
+registry = ModelRegistry(tracking_uri="http://mlflow-server:5000")
+model_uri = registry.register_model(
+    model_path="path/to/model.pkl",
+    name="fraud_detection",
+    tags={"algorithm": "xgboost", "version": "1.0.0"}
+)
+```
+
+## 👍 Development
+
+### Directory Structure
+
+```
+mlops-observability/
+├── docker/                 # Docker configuration files
+│   ├── prometheus/         # Prometheus configuration
+│   └── grafana/            # Grafana provisioning
+├── grafana/                # Grafana dashboards and alerts
+│   ├── dashboards/         # Dashboard templates
+│   └── alerts/             # Alert configurations
+├── src/                    # Source code
+│   ├── api/                # FastAPI service
+│   ├── monitoring/         # Metrics collection
+│   ├── data_validation/    # Schema and drift detection
+│   └── model_registry/     # Model versioning
+└── tests/                  # Test suite
+    ├── model_registry/     # Unit tests
+    ├── test_integration.py # Integration tests
+    └── test_e2e.py         # End-to-end tests
+```
+
+### Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Implement your changes
+4. Add tests for your implementation
+5. Update documentation as needed
+6. Commit your changes (`git commit -m 'Add amazing feature'`)
+7. Push to the branch (`git push origin feature/amazing-feature`)
+8. Open a Pull Request
+
 ## 💡 Conclusion
 
 The MLOps Observability Platform provides a comprehensive solution for monitoring ML models in production environments. With real-time performance tracking, data quality monitoring, and automated alerting, it helps teams maintain reliable AI systems at scale.
@@ -243,3 +312,6 @@ Key benefits:
 
 For detailed setup and usage instructions, refer to [SETUP.md](SETUP.md).
 
+## 📜 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
