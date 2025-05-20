@@ -1,18 +1,28 @@
-## MLOps Observability Platform
+# MLOps Observability Platform
 
-**A production-grade platform for monitoring, validating, and maintaining ML models in real-world environments.**
+**A production-grade platform for monitoring, validating, and maintaining ML models in real-world environments with comprehensive observability and alerting.**
 
-### 🚀 Project Overview
+## 🚀 Features
 
-This project implements a modular, scalable MLOps observability platform designed for real-time model monitoring, data validation, and automated feedback loops. It's engineered to meet the needs of modern AI teams operating at scale.
+- **Model Observability**: Comprehensive metrics collection for model performance monitoring
+- **Data Validation**: Schema validation and data quality checks for production traffic
+- **Drift Detection**: Statistical methods to detect and quantify data drift in real-time
+- **Model Registry**: Version management and lifecycle tracking for ML models
+- **Performance Visualization**: Pre-built Grafana dashboards for real-time monitoring
+- **Alerting**: Configurable alerts for model degradation and data quality issues
+- **Testing Framework**: End-to-end and integration test suites to validate platform functionality
 
-### 🏗️ Architecture
+## 🚧 Architecture
 
-- **API Layer:** FastAPI for model serving and monitoring endpoints
-- **Validation Layer:** Automated schema and data drift checks
-- **Monitoring Layer:** Prometheus for metrics collection
-- **Model Registry:** MLflow for versioning and metadata
-- **Visualization:** Grafana dashboards for real-time insights
+This platform implements a layered architecture:
+
+1. **API Layer:** FastAPI for model serving and monitoring endpoints with built-in observability
+2. **Validation Layer:** Automated schema and data drift checks for data quality assurance
+3. **Monitoring Layer:** Prometheus for metrics collection and storage with custom metrics
+4. **Model Registry:** MLflow for versioning, metadata, and lifecycle management
+5. **Visualization Layer:** Grafana dashboards with performance visualization and alerting
+
+The architecture follows best practices for observability with separation of concerns and modular design:
 
 ![Architecture Diagram](architecture.png)
 
@@ -68,24 +78,52 @@ comparison = compare_model_versions(
 )
 ```
 
-### ⚙️ Quickstart
+## ⚙️ Installation & Setup
+
+### Prerequisites
+
+- Docker and Docker Compose
+- Python 3.8+
+- Git
+
+### Quickstart
 
 1. **Clone the repo:**  
-   `git clone https://github.com/yourusername/mlops-observability.git`
-2. **Setup environment:**  
-   `docker-compose up -d`
+   ```bash
+   git clone https://github.com/hmm29/mlops-observability.git
+   cd mlops-observability
+   ```
+
+2. **Start the monitoring stack:**  
+   ```bash
+   docker-compose -f docker/docker-compose-grafana.yml up -d
+   ```
+
 3. **Access services:**  
    - API: `http://localhost:8000`
-   - Grafana: `http://localhost:3000`
+   - Grafana: `http://localhost:3000` (login: admin/admin)
    - Prometheus: `http://localhost:9090`
 
-### 📝 Day 1 Deliverables
+For detailed setup instructions, see [SETUP.md](SETUP.md).
 
-- [x] Repository initialized
-- [x] Professional README
-- [x] Architecture diagram (placeholder)
-- [x] Project structure scaffolded
-- [x] Docker Compose config drafted
+## 📝 Implementation Highlights
+
+### Model Monitoring Components
+
+- **Comprehensive Metrics Collection:**
+  - Real-time performance metrics tracking
+  - Request volume and latency monitoring
+  - Error tracking and categorization
+  
+- **Data Quality Monitoring:**
+  - Feature drift detection using KS tests
+  - Input validation and schema enforcement
+  - Automated anomaly detection
+  
+- **Visualization & Alerting:**
+  - Interactive Grafana dashboards with performance panels
+  - Real-time alerting for drift detection
+  - Customizable notification channels
 
 ### 📝 Current Status
 
@@ -135,24 +173,73 @@ comparison = compare_model_versions(
    - [ ] Custom notification channels
    - [ ] Advanced data quality monitoring
 
-### 📝 Technical Details - API Implementation
+## 🧹 Testing Framework
 
-The API implementation follows industry best practices:
+### Integration Tests
 
-1. **Monitoring Integration**:
-   - Decorator-based metrics collection
-   - Non-intrusive monitoring
-   - Maintainable metric system
+Our integration tests validate component interactions:
 
-2. **Validation Pipeline**:
-   - Early data rejection
-   - Bad data tracking
-   - Drift detection
+```bash
+# Run integration tests
+pytest tests/test_integration.py
+```
 
-3. **Documentation**:
-   - Swagger UI integration
-   - Auto-generated documentation
-   - Interactive API testing
+These tests verify:
+- API prediction endpoints
+- Input validation mechanisms
+- Metrics collection
+- Drift detection algorithms
 
-This architecture ensures robust monitoring while maintaining clean, maintainable code.
+### End-to-End Tests
+
+Complete system validation is done through E2E tests:
+
+```bash
+# Run E2E tests
+pytest tests/test_e2e.py
+```
+
+These tests confirm:
+- Full prediction workflow from request to visualization
+- Data drift detection and alerting
+- Grafana dashboard accessibility
+- System resilience under various conditions
+
+Detailed testing documentation is available in [tests/README.md](tests/README.md).
+
+## 🔍 Usage Examples
+
+### Model Drift Monitoring
+
+```python
+from src.monitoring.metrics import MLMetricsCollector
+from src.data_validation.drift import DriftDetector
+import pandas as pd
+
+# Initialize metrics collector
+metrics = MLMetricsCollector(model_name="fraud_detection", version="1.0")
+
+# Track model performance
+with metrics.track_predictions():
+    predictions = model.predict(features)
+    
+# Check for data drift
+detector = DriftDetector(reference_data=training_data)
+results = detector.detect_drift(current_data, threshold=0.05)
+
+if results["drift_detected"]:
+    print(f"Drift detected in features: {results['flagged_features']}")
+```
+
+## 💡 Conclusion
+
+The MLOps Observability Platform provides a comprehensive solution for monitoring ML models in production environments. With real-time performance tracking, data quality monitoring, and automated alerting, it helps teams maintain reliable AI systems at scale.
+
+Key benefits:
+- Early detection of model degradation
+- Proactive data quality management
+- Streamlined MLOps workflows
+- Enhanced model reliability and user trust
+
+For detailed setup and usage instructions, refer to [SETUP.md](SETUP.md).
 
