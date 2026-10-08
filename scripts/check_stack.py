@@ -7,6 +7,8 @@ Uses only the standard library. Exits non-zero on the first failed check.
 """
 import base64
 import json
+import os
+import subprocess
 import sys
 import time
 import urllib.parse
@@ -16,6 +18,13 @@ API = "http://localhost:8000"
 PROMETHEUS = "http://localhost:9090"
 GRAFANA = "http://localhost:3000"
 GRAFANA_AUTH = "Basic " + base64.b64encode(b"admin:admin").decode()
+
+
+def annotate(title: str, details: str) -> None:
+    """On GitHub Actions, show the message on the pull request."""
+    if os.getenv("GITHUB_ACTIONS"):
+        message = details[-3000:].replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+        print(f"::error title={title}::{message}", flush=True)
 
 
 def get(url: str, auth: bool = False):
@@ -37,6 +46,7 @@ def wait_for(description: str, check, timeout: int = 120):
             last_error = error
         time.sleep(3)
     print(f"FAIL  {description} ({last_error})")
+    annotate(f"Stack check failed: {description}", str(last_error))
     sys.exit(1)
 
 
@@ -47,6 +57,14 @@ def prometheus_value(query: str) -> float:
 
 
 def main() -> None:
+    if "--annotate-logs" in sys.argv:
+        for service in ("api", "prometheus", "grafana"):
+            logs = subprocess.run(
+                ["docker", "compose", "logs", "--no-color", "--tail", "40", service],
+                capture_output=True, text=True, check=False,
+            )
+            annotate(f"{service} logs", logs.stdout + logs.stderr)
+        return
     wait_for("API is healthy with a model loaded", lambda: get(f"{API}/health")["status"] == "ok")
     wait_for(
         "API drift check flags the drifted feature",
