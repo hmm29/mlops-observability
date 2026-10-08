@@ -23,3 +23,10 @@ def pytest_runtest_logreport(report):
 def pytest_collectreport(report):
     if report.failed:
         _annotate(f"collection: {report.nodeid}", str(report.longrepr))
+
+
+def pytest_runtest_teardown(item):
+    """Never let one test leave an MLflow run active for the next."""
+    mlflow = sys.modules.get("mlflow")
+    if mlflow is not None:
+        mlflow.end_run()

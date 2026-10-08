@@ -1,3 +1,5 @@
 # Only needed for the MLflow model registry (src/model_registry).
 # The client uses the stage-based registry API, which exists in MLflow 2.x.
 mlflow>=2.12,<3
+# MLflow 2.x imports names that SQLAlchemy 2.1 removed.
+sqlalchemy<2.1
