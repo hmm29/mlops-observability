@@ -15,6 +15,8 @@ class TestModelRegistry(unittest.TestCase):
         # Act
         with patch('mlflow.start_run'), \
              patch('mlflow.set_experiment'), \
+             patch('mlflow.set_tag'), \
+             patch('mlflow.log_param'), \
              patch('mlflow.register_model') as mock_register:
             
             model_uri = registry.register_model("model/path", "test_model")

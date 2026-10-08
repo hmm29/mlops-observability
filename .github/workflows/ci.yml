@@ -1,0 +1,44 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -q
+
+  stack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Start API, Prometheus and Grafana
+        run: docker compose up -d --build
+      - name: Wait for the API
+        run: |
+          for i in $(seq 1 60); do
+            curl -fsS http://localhost:8000/health && break
+            sleep 2
+          done
+      - name: Send normal, invalid and drifted traffic
+        run: docker compose exec -T api python -m scripts.simulate_traffic --normal 100 --drifted 150
+      - name: Check the stack end to end
+        run: python scripts/check_stack.py
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          docker compose ps
+          docker compose logs --tail 200
+          python scripts/check_stack.py --annotate-logs || true

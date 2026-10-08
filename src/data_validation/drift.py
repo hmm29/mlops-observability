@@ -1,99 +1,138 @@
-# src/data_validation/drift.py
-import pandas as pd
+"""Detect drift between reference (training) data and recent production data."""
+import threading
+from collections import deque
+from typing import Any, Deque, Dict, Optional
+
 import numpy as np
+import pandas as pd
 from scipy import stats
-from typing import Dict, List, Any, Optional
+
+
+def jensen_shannon_divergence(first: Dict[Any, float], second: Dict[Any, float]) -> float:
+    """Jensen-Shannon divergence (base 2) between two categorical distributions.
+
+    Inputs map category to probability. The result is 0 for identical
+    distributions and 1 for distributions with no category in common.
+    """
+    categories = sorted(set(first) | set(second), key=str)
+    p = np.array([first.get(category, 0.0) for category in categories], dtype=float)
+    q = np.array([second.get(category, 0.0) for category in categories], dtype=float)
+    if p.sum() == 0 or q.sum() == 0:
+        return 0.0
+    p, q = p / p.sum(), q / q.sum()
+    mixture = (p + q) / 2
+
+    def kl(a: np.ndarray, b: np.ndarray) -> float:
+        mask = a > 0
+        return float(np.sum(a[mask] * np.log2(a[mask] / b[mask])))
+
+    return max(0.0, min(1.0, 0.5 * kl(p, mixture) + 0.5 * kl(q, mixture)))
+
 
 class DriftDetector:
+    """Compare a batch of current data with the reference data, per feature.
+
+    Numeric features use the two-sample Kolmogorov-Smirnov test and are
+    flagged when the p-value is below `threshold`. Categorical features use
+    Jensen-Shannon divergence and are flagged when it exceeds `js_threshold`.
+    """
+
     def __init__(self, reference_data: pd.DataFrame):
-        """
-        Initialize with reference (training) data
-        """
         self.reference_data = reference_data
-        self.reference_stats = self._compute_statistics(reference_data)
-        
-    def _compute_statistics(self, data: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
-        """Compute statistics for each column"""
-        stats_dict = {}
-        
-        for col in data.select_dtypes(include=[np.number]).columns:
-            stats_dict[col] = {
-                'mean': data[col].mean(),
-                'std': data[col].std(),
-                'min': data[col].min(),
-                'max': data[col].max(),
-                'median': data[col].median(),
-                'hist': np.histogram(data[col].dropna(), bins=10)
-            }
-            
-        for col in data.select_dtypes(include=['object', 'category']).columns:
-            stats_dict[col] = {
-                'value_counts': data[col].value_counts(normalize=True).to_dict(),
-                'unique_count': data[col].nunique()
-            }
-            
-        return stats_dict
-    
-    def detect_drift(self, current_data: pd.DataFrame, 
-                     threshold: float = 0.05) -> Dict[str, Any]:
-        """
-        Detect drift between reference and current data
-        Returns drift metrics and flagged features
-        """
-        current_stats = self._compute_statistics(current_data)
-        drift_results = {
-            'drift_detected': False,
-            'feature_drifts': {},
-            'flagged_features': []
+        self.numeric_columns = list(reference_data.select_dtypes(include=[np.number]).columns)
+        self.categorical_columns = [
+            column for column in reference_data.columns if column not in self.numeric_columns
+        ]
+        self.reference_distributions = {
+            column: reference_data[column].value_counts(normalize=True).to_dict()
+            for column in self.categorical_columns
         }
-        
-        # Check numeric features using Kolmogorov-Smirnov test
-        for col in self.reference_data.select_dtypes(include=[np.number]).columns:
-            if col not in current_data.columns:
+
+    def detect_drift(
+        self,
+        current_data: pd.DataFrame,
+        threshold: float = 0.05,
+        js_threshold: float = 0.1,
+    ) -> Dict[str, Any]:
+        results: Dict[str, Any] = {"drift_detected": False, "feature_drifts": {}, "flagged_features": []}
+
+        for column in self.numeric_columns:
+            if column not in current_data.columns:
                 continue
-                
-            # Perform KS test
-            ks_stat, p_value = stats.ks_2samp(
-                self.reference_data[col].dropna(),
-                current_data[col].dropna()
+            current = pd.to_numeric(current_data[column], errors="coerce").dropna()
+            if current.empty:
+                continue
+            statistic, p_value = stats.ks_2samp(self.reference_data[column].dropna(), current)
+            drifted = bool(p_value < threshold)
+            results["feature_drifts"][column] = {
+                "test": "ks",
+                "statistic": float(statistic),
+                "p_value": float(p_value),
+                "drift": drifted,
+            }
+            if drifted:
+                results["flagged_features"].append(column)
+
+        for column in self.categorical_columns:
+            if column not in current_data.columns:
+                continue
+            current = current_data[column].dropna()
+            if current.empty:
+                continue
+            divergence = jensen_shannon_divergence(
+                self.reference_distributions[column],
+                current.value_counts(normalize=True).to_dict(),
             )
-            
-            drift_results['feature_drifts'][col] = {
-                'test': 'ks',
-                'statistic': ks_stat,
-                'p_value': p_value,
-                'drift': p_value < threshold
+            drifted = divergence > js_threshold
+            results["feature_drifts"][column] = {
+                "test": "jensen_shannon",
+                "statistic": divergence,
+                "drift": drifted,
             }
-            
-            if p_value < threshold:
-                drift_results['drift_detected'] = True
-                drift_results['flagged_features'].append(col)
-                
-        # Check categorical features using Chi-squared test
-        for col in self.reference_data.select_dtypes(include=['object', 'category']).columns:
-            if col not in current_data.columns:
-                continue
-            
-            # Get value distributions
-            ref_counts = self.reference_stats[col]['value_counts']
-            curr_counts = current_stats[col]['value_counts']
-            
-            # Calculate JS divergence as an alternative
-            js_div = self._jensen_shannon_divergence(ref_counts, curr_counts)
-            
-            drift_results['feature_drifts'][col] = {
-                'test': 'jensen_shannon',
-                'statistic': js_div,
-                'drift': js_div > threshold
-            }
-            
-            if js_div > threshold:
-                drift_results['drift_detected'] = True
-                drift_results['flagged_features'].append(col)
-        
-        return drift_results
-    
-    def _jensen_shannon_divergence(self, dist1, dist2):
-        """Calculate Jensen-Shannon divergence between two distributions"""
-        # Implementation details here
-        return 0.1  # Placeholder
+            if drifted:
+                results["flagged_features"].append(column)
+
+        results["drift_detected"] = bool(results["flagged_features"])
+        return results
+
+
+class DriftMonitor:
+    """Run drift detection over a sliding window of recent requests.
+
+    A single request says nothing about a distribution, so rows are collected
+    in a window and the detector runs every `check_every` rows once the window
+    holds at least `min_samples`.
+    """
+
+    def __init__(
+        self,
+        detector: DriftDetector,
+        window_size: int = 200,
+        min_samples: int = 50,
+        check_every: int = 25,
+    ):
+        self.detector = detector
+        self.min_samples = min_samples
+        self.check_every = check_every
+        self._window: Deque[Dict[str, Any]] = deque(maxlen=window_size)
+        self._since_check = 0
+        self._lock = threading.Lock()
+        self.last_report: Optional[Dict[str, Any]] = None
+
+    def add(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Add one row. Returns a new drift report when a check ran, else None."""
+        with self._lock:
+            self._window.append(row)
+            self._since_check += 1
+            if len(self._window) < self.min_samples or self._since_check < self.check_every:
+                return None
+            self._since_check = 0
+            window = pd.DataFrame(list(self._window))
+        report = self.detector.detect_drift(window)
+        report["window_size"] = len(window)
+        self.last_report = report
+        return report
+
+    @property
+    def rows_seen(self) -> int:
+        return len(self._window)
