@@ -1,149 +1,169 @@
-# src/api/main.py
-from fastapi import FastAPI, Request, Depends, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-from typing import Dict, List, Any, Optional
-import pandas as pd
-import json
+"""Model-serving API with built-in monitoring.
+
+Run with: uvicorn src.api.main:app
+"""
+import logging
 import os
+import tempfile
 import time
+from typing import Any, Dict, List, Optional, Tuple
 
-from src.monitoring.metrics import MLMetricsCollector
+import pandas as pd
+from fastapi import FastAPI, HTTPException, Response
+from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
+from pydantic import BaseModel, ConfigDict, Field
+
+from src.api.middleware import build_metrics_middleware
+from src.data_validation.drift import DriftDetector, DriftMonitor
 from src.data_validation.schema import DataSchemaValidator
-from src.data_validation.drift import DriftDetector
-from src.model_registry.client import ModelRegistry
-from src.api.middleware import metrics_middleware
+from src.model.training import MODEL_NAME, ModelBundle, default_bundle_dir, load_bundle
+from src.monitoring.metrics import MLMetricsCollector
 
-# Load model from registry
-MODEL_NAME = os.getenv("MODEL_NAME", "example_model")
-MODEL_VERSION = os.getenv("MODEL_VERSION", "1")
+logger = logging.getLogger(__name__)
 
-# Initialize the app
-app = FastAPI(
-    title="MLOps Observability API",
-    description="API for model serving with built-in monitoring",
-    version="0.1.0"
-)
 
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Add metrics middleware
-app.middleware("http")(metrics_middleware)
-
-# Initialize components
-metrics = MLMetricsCollector(MODEL_NAME, MODEL_VERSION)
-registry = ModelRegistry()
-model = None  # Will be loaded on startup
-
-# Pydantic models for requests/responses
 class PredictionRequest(BaseModel):
-    features: Dict[str, Any] = Field(..., description="Feature values for prediction")
-    request_id: Optional[str] = Field(None, description="Unique request ID")
+    features: Dict[str, Any] = Field(..., description="Feature values for one prediction")
+    request_id: Optional[str] = Field(None, description="Caller's request ID, echoed back")
+
 
 class PredictionResponse(BaseModel):
-    prediction: Any = Field(..., description="Model prediction")
-    prediction_probability: Optional[float] = Field(None, description="Prediction probability")
-    request_id: Optional[str] = Field(None, description="Original request ID")
-    model_version: str = Field(..., description="Model version used")
-    processing_time_ms: float = Field(..., description="Processing time in milliseconds")
+    model_config = ConfigDict(protected_namespaces=())
 
-@app.on_event("startup")
-async def startup_event():
-    """Load model on startup"""
-    global model, validator, drift_detector
-    
+    prediction: int = Field(..., description="1 if the transaction is flagged, else 0")
+    prediction_probability: float = Field(..., description="Probability of the flagged class")
+    request_id: Optional[str] = None
+    model_version: str
+    processing_time_ms: float
+
+
+def resolve_bundle(model_name: str) -> Tuple[Optional[ModelBundle], str]:
+    """Find and load the model bundle. Returns (bundle or None, version).
+
+    If MLFLOW_TRACKING_URI is set, the Production version is downloaded from
+    the MLflow registry. Otherwise the bundle is read from MODEL_DIR, which
+    defaults to models/<model name>.
+    """
     try:
-        # Load the model from registry
-        model_info = registry.get_latest_model(MODEL_NAME)
-        if not model_info:
-            raise ValueError(f"Model {MODEL_NAME} not found in registry")
-        
-        # TODO: Load actual model here
-        model = "placeholder"  # Will be replaced with actual model loading
-        
-        # Load schema and reference data
-        schema_path = f"models/{MODEL_NAME}/schema.json"
-        reference_data_path = f"models/{MODEL_NAME}/reference_data.csv"
-        
-        validator = DataSchemaValidator(schema_path=schema_path)
-        drift_detector = DriftDetector(pd.read_csv(reference_data_path))
-        
-    except Exception as e:
-        # Log the error but allow the app to start
-        print(f"Error loading model: {str(e)}")
+        tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "").strip()
+        if tracking_uri:
+            from src.model_registry.client import ModelRegistry
 
-@app.get("/health")
-async def health():
-    """Health check endpoint"""
-    if model is None:
-        return {"status": "warning", "message": "Model not loaded"}
-    return {"status": "ok"}
+            path, version = ModelRegistry(tracking_uri).download_bundle(model_name, tempfile.mkdtemp())
+            return load_bundle(path), version
+        bundle = load_bundle(os.getenv("MODEL_DIR", default_bundle_dir(model_name)))
+        return bundle, str(bundle.metadata.get("version", "1"))
+    except Exception as error:  # noqa: BLE001 - start anyway and report through /health
+        logger.error("Could not load model '%s': %s", model_name, error)
+        return None, "unknown"
 
-@app.post("/predict", response_model=PredictionResponse)
-@metrics.track_latency()
-async def predict(request: PredictionRequest):
-    """Make a prediction with the model"""
-    start_time = time.time()
-    
-    if model is None:
-        metrics.track_error("model_not_loaded")
-        raise HTTPException(status_code=503, detail="Model not loaded")
-    
-    try:
-        # Convert features to DataFrame for validation
-        features_df = pd.DataFrame([request.features])
-        
-        # Validate input data
-        validation_result = validator.validate(features_df)
-        if not validation_result["valid"]:
-            metrics.track_error("validation_error")
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Validation error: {validation_result['errors']}"
-            )
-        
-        # Track feature values for monitoring
-        for feature, value in request.features.items():
-            if isinstance(value, (int, float)):
-                metrics.track_feature_value(feature, value)
-        
-        # Check for drift (in real system, this would be batched)
-        drift_result = drift_detector.detect_drift(features_df)
-        for feature, drift_info in drift_result["feature_drifts"].items():
-            if "statistic" in drift_info:
-                metrics.track_drift_score(
-                    feature, 
-                    drift_info["statistic"],
-                    drift_info.get("test", "unknown")
-                )
-        
-        # TODO: Make actual prediction with the model
-        # For now, we'll just return a mock response
-        prediction = 1  # Placeholder
-        probability = 0.85  # Placeholder
-        
-        # Track successful prediction
-        metrics.track_prediction("success")
-        
-        # Calculate processing time
-        processing_time = (time.time() - start_time) * 1000  # ms
-        
-        return PredictionResponse(
-            prediction=prediction,
-            prediction_probability=probability,
-            request_id=request.request_id,
-            model_version=MODEL_VERSION,
-            processing_time_ms=processing_time
+
+def create_app(
+    bundle: Optional[ModelBundle] = None,
+    version: Optional[str] = None,
+    model_name: Optional[str] = None,
+    drift_window: int = 200,
+    drift_min_samples: int = 50,
+    drift_check_every: int = 25,
+) -> FastAPI:
+    """Build the app. Pass a bundle directly (tests) or let it be resolved."""
+    model_name = model_name or os.getenv("MODEL_NAME", MODEL_NAME)
+    if bundle is None:
+        bundle, resolved_version = resolve_bundle(model_name)
+        version = version or resolved_version
+    version = version or str(bundle.metadata.get("version", "1"))
+
+    registry = CollectorRegistry()
+    metrics = MLMetricsCollector(model_name, version, registry=registry)
+
+    validator: Optional[DataSchemaValidator] = None
+    monitor: Optional[DriftMonitor] = None
+    feature_names: List[str] = []
+    if bundle is not None:
+        validator = DataSchemaValidator(schema=bundle.schema)
+        feature_names = list(bundle.schema["features"])
+        monitor = DriftMonitor(
+            DriftDetector(bundle.reference_data[feature_names]),
+            window_size=drift_window,
+            min_samples=drift_min_samples,
+            check_every=drift_check_every,
         )
-        
-    except Exception as e:
-        # Track error
-        metrics.track_error("prediction_error")
-        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+
+    app = FastAPI(
+        title="MLOps Observability API",
+        description="Serves an example model and exposes prediction, drift and API metrics.",
+        version="0.2.0",
+    )
+    app.middleware("http")(build_metrics_middleware(registry))
+    app.state.metrics_registry = registry
+    app.state.drift_monitor = monitor
+
+    @metrics.track_latency()
+    def run_prediction(features: Dict[str, Any]) -> float:
+        frame = pd.DataFrame([features])
+        validation = validator.validate(frame)
+        if not validation["valid"]:
+            metrics.track_error("validation_error")
+            raise HTTPException(status_code=422, detail={"errors": validation["errors"]})
+        try:
+            probability = float(bundle.model.predict_proba(frame[feature_names])[0, 1])
+        except Exception as error:  # noqa: BLE001
+            metrics.track_error("prediction_error")
+            logger.exception("Prediction failed")
+            raise HTTPException(status_code=500, detail="Prediction failed") from error
+
+        row = {name: features.get(name) for name in feature_names}
+        for name, value in row.items():
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                metrics.track_feature_value(name, float(value))
+        report = monitor.add(row)
+        if report is not None:
+            metrics.track_drift_report(report)
+        metrics.track_prediction("success")
+        return probability
+
+    @app.get("/health")
+    def health() -> dict:
+        if bundle is None:
+            return {"status": "degraded", "message": "Model not loaded", "model": model_name}
+        return {"status": "ok", "model": model_name, "version": version}
+
+    @app.get("/model")
+    def model_info() -> dict:
+        if bundle is None:
+            raise HTTPException(status_code=503, detail="Model not loaded")
+        return {**bundle.metadata, "version": version, "features": bundle.schema["features"]}
+
+    @app.post("/predict", response_model=PredictionResponse)
+    def predict(request: PredictionRequest) -> PredictionResponse:
+        start = time.perf_counter()
+        if bundle is None:
+            metrics.track_error("model_not_loaded")
+            raise HTTPException(status_code=503, detail="Model not loaded")
+        probability = run_prediction(request.features)
+        return PredictionResponse(
+            prediction=int(probability >= 0.5),
+            prediction_probability=round(probability, 6),
+            request_id=request.request_id,
+            model_version=version,
+            processing_time_ms=round((time.perf_counter() - start) * 1000, 3),
+        )
+
+    @app.get("/drift")
+    def drift() -> dict:
+        if monitor is None:
+            raise HTTPException(status_code=503, detail="Model not loaded")
+        return {
+            "rows_in_window": monitor.rows_seen,
+            "min_samples": monitor.min_samples,
+            "report": monitor.last_report,
+        }
+
+    @app.get("/metrics", include_in_schema=False)
+    def prometheus_metrics() -> Response:
+        return Response(generate_latest(registry), media_type=CONTENT_TYPE_LATEST)
+
+    return app
+
+
+app = create_app()

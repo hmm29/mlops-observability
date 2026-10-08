@@ -1,25 +1,28 @@
-# docker-compose.yml
-version: '3'
 services:
   api:
-    build: ./src/api
+    build: .
     ports:
       - "8000:8000"
-    depends_on:
-      - prometheus
-  
+
   prometheus:
-    image: prom/prometheus
+    image: prom/prometheus:v2.53.0
     ports:
       - "9090:9090"
     volumes:
-      - ./prometheus:/etc/prometheus
-  
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - api
+
   grafana:
-    image: grafana/grafana
+    image: grafana/grafana:10.4.2
     ports:
       - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus
-    volumes:
-      - ./grafana:/var/lib/grafana

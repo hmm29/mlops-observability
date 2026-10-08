@@ -1,317 +1,143 @@
 # MLOps Observability Platform
 
-**A production-grade platform for monitoring, validating, and maintaining ML models in real-world environments with comprehensive observability and alerting.**
+[![tests](https://github.com/hmm29/mlops-observability/actions/workflows/ci.yml/badge.svg)](https://github.com/hmm29/mlops-observability/actions/workflows/ci.yml)
 
-## 🚀 Features
+A reference implementation of model monitoring: a FastAPI service that serves a model and reports on itself, with Prometheus collecting the metrics and Grafana showing dashboards and alert rules.
 
-- **Model Observability**: Comprehensive metrics collection for model performance monitoring
-- **Data Validation**: Schema validation and data quality checks for production traffic
-- **Drift Detection**: Statistical methods to detect and quantify data drift in real-time
-- **Model Registry**: Version management and lifecycle tracking for ML models
-- **Performance Visualization**: Pre-built Grafana dashboards for real-time monitoring
-- **Alerting**: Configurable alerts for model degradation and data quality issues
-- **Testing Framework**: End-to-end and integration test suites to validate platform functionality
+It answers the questions that come up after a model ships. Is it getting requests? How fast is it? Are inputs valid? Has production data moved away from the training data?
 
-## 🚧 Architecture
+The served model is a small example trained on synthetic data, so the monitoring has something real to watch. This is a learning project, not a system that has run in production.
 
-This platform implements a layered architecture:
+![Architecture sketch](architecture.png)
 
-1. **API Layer:** FastAPI for model serving and monitoring endpoints with built-in observability
-2. **Validation Layer:** Automated schema and data drift checks for data quality assurance
-3. **Monitoring Layer:** Prometheus for metrics collection and storage with custom metrics
-4. **Model Registry:** MLflow for versioning, metadata, and lifecycle management
-5. **Visualization Layer:** Grafana dashboards with performance visualization and alerting
+## What it does
 
-The architecture follows best practices for observability with separation of concerns and modular design:
+- **Serves predictions.** `POST /predict` validates the input, scores it with a scikit-learn pipeline and returns the prediction and probability.
+- **Validates inputs.** Each request is checked against a JSON schema: required features, numeric types and ranges, allowed categories. Invalid requests get a 422 with every problem listed.
+- **Detects drift.** Recent requests are kept in a sliding window (200 rows by default). Every 25 requests the window is compared with the training data: a two-sample Kolmogorov-Smirnov test for numeric features and Jensen-Shannon divergence for categorical ones.
+- **Exports metrics.** `GET /metrics` exposes prediction counts, errors by type, a latency histogram, drift scores per feature and HTTP request metrics, in Prometheus format.
+- **Dashboards and alerts.** Grafana is provisioned with one dashboard (six panels) and three alert rules: feature drift, error rate above 5%, and p95 latency above 500 ms.
+- **Model registry.** A thin client over MLflow's model registry registers model bundles, moves versions between stages and compares versions by metric. The API can serve the Production version from the registry.
 
-![Architecture Diagram](architecture.png)
+## Run the stack
 
-### 📦 Project Structure
-
-```
-mlops-observability/
-├── README.md
-├── architecture.png
-├── docker-compose.yml
-├── src/
-│   ├── api/
-│   ├── monitoring/
-│   ├── data_validation/
-│   ├── model_registry/
-│   └── dashboard/
-└── tests/
-```
-
-### Model Registry
-
-The Model Registry component provides a centralized repository for model versioning, metadata tracking, and lifecycle management. Key features include:
-
-- Model versioning and storage
-- Model metadata and lineage tracking
-- Performance metrics comparison between versions
-- Stage transitions (development → staging → production)
-- Integration with monitoring systems for observability
-
-#### Usage Example
-
-```python
-from src.model_registry.client import ModelRegistry
-from src.model_registry.version import compare_model_versions
-
-# Initialize registry client
-registry = ModelRegistry(tracking_uri="http://mlflow-server:5000")
-
-# Register a new model
-model_uri = registry.register_model(
-    model_path="s3://models/model.pkl",
-    name="fraud_detection",
-    tags={"algorithm": "xgboost", "owner": "data-science-team"}
-)
-
-# Compare different model versions
-comparison = compare_model_versions(
-    registry,
-    model_name="fraud_detection",
-    version1="1",
-    version2="2",
-    metric="auc"
-)
-```
-
-## ⚙️ Installation & Setup
-
-### Prerequisites
-
-- Docker and Docker Compose
-- Python 3.8+
-- Git
-
-### Quickstart
-
-1. **Clone the repo:**  
-   ```bash
-   git clone https://github.com/hmm29/mlops-observability.git
-   cd mlops-observability
-   ```
-
-2. **Start the monitoring stack:**  
-   ```bash
-   docker-compose -f docker/docker-compose-grafana.yml up -d
-   ```
-
-3. **Access services:**  
-   - API: `http://localhost:8000`
-   - Grafana: `http://localhost:3000` (login: admin/admin)
-   - Prometheus: `http://localhost:9090`
-
-For detailed setup instructions, see [SETUP.md](SETUP.md).
-
-## 📝 Implementation Highlights
-
-### Model Monitoring Components
-
-- **Comprehensive Metrics Collection:**
-  - Real-time performance metrics tracking
-  - Request volume and latency monitoring
-  - Error tracking and categorization
-  
-- **Data Quality Monitoring:**
-  - Feature drift detection using KS tests
-  - Input validation and schema enforcement
-  - Automated anomaly detection
-  
-- **Visualization & Alerting:**
-  - Interactive Grafana dashboards with performance panels
-  - Real-time alerting for drift detection
-  - Customizable notification channels
-
-### 📝 Current Status
-
-✅ **Completed Components**:
-- [x] Model Registry implementation
-- [x] Data Validation (Drift Detection and Schema Validation)
-- [x] Unit tests for model registry
-- [x] Metrics Collection Service
-  - [x] Prometheus metrics collector
-  - [x] Model performance metrics
-  - [x] System health monitoring
-- [x] API Endpoints
-  - [x] FastAPI model serving
-  - [x] Prediction monitoring
-  - [x] Swagger UI documentation
-- [x] Dashboard implementation
-  - [x] Grafana dashboards for model monitoring
-  - [x] Performance visualization panels
-  - [x] Data drift monitoring
-- [x] Alerting configuration
-  - [x] Feature drift alerts
-  - [x] High error rate detection
-  - [x] Latency threshold monitoring
-- [x] Comprehensive Testing
-  - [x] Integration tests
-  - [x] End-to-end tests
-  - [x] Unit tests for model registry
-- [x] Documentation
-  - [x] API documentation
-  - [x] Setup instructions
-  - [x] Deployment guides
-
-### 📝 Next Steps
-
-1. Extended Monitoring Features:
-   - [ ] A/B testing support
-   - [ ] Multi-model comparison dashboards
-   - [ ] Custom user-defined metrics
-
-2. Enhanced Testing:
-   - [ ] Load testing framework
-   - [ ] Chaos engineering tests
-   - [ ] Continuous integration pipelines
-
-3. Advanced Features:
-   - [ ] Automated model retraining triggers
-   - [ ] Custom notification channels
-   - [ ] Advanced data quality monitoring
-
-## 🧹 Testing Framework
-
-### Integration Tests
-
-Our integration tests validate component interactions:
+You need Docker.
 
 ```bash
-# Run integration tests
-pytest tests/test_integration.py
+git clone https://github.com/hmm29/mlops-observability.git
+cd mlops-observability
+docker compose up -d --build
 ```
 
-These tests verify:
-- API prediction endpoints
-- Input validation mechanisms
-- Metrics collection
-- Drift detection algorithms
+The image trains the example model during the build. Then:
 
-### End-to-End Tests
+| Service | URL |
+|---|---|
+| API docs | http://localhost:8000/docs |
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:3000 (login `admin` / `admin`, dashboard "Model Monitoring" in the MLOps folder) |
 
-Complete system validation is done through E2E tests:
+Send traffic so there is something to look at. This sends 200 normal requests, 5 invalid ones and 200 drifted ones:
 
 ```bash
-# Run E2E tests
-pytest tests/test_e2e.py
+docker compose exec api python -m scripts.simulate_traffic
 ```
 
-These tests confirm:
-- Full prediction workflow from request to visualization
-- Data drift detection and alerting
-- Grafana dashboard accessibility
-- System resilience under various conditions
+The drift panels rise when the drifted requests arrive, and the "Feature drift" alert rule starts firing about two minutes later.
 
-Detailed testing documentation is available in [tests/README.md](tests/README.md).
+To confirm everything is connected:
 
-## 🔍 Usage
+```bash
+python scripts/check_stack.py
+```
 
-### Making Predictions
+## API
+
+```bash
+curl -s localhost:8000/predict \
+  -H 'Content-Type: application/json' \
+  -d '{"features": {"amount": 42.5, "account_age_days": 400, "transactions_last_24h": 2, "merchant_category": "grocery"}, "request_id": "demo-1"}'
+```
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /predict` | Validate, score, record metrics |
+| `GET /drift` | The latest drift report and how many rows are in the window |
+| `GET /model` | Model metadata, test metrics and feature schema |
+| `GET /health` | `ok`, or `degraded` if no model could be loaded |
+| `GET /metrics` | Prometheus metrics |
+
+## Run without Docker
+
+Python 3.10 or newer.
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python -m scripts.train_model          # writes models/example_model/
+uvicorn src.api.main:app --reload
+```
+
+## Model registry
+
+The registry needs MLflow and works against a local SQLite file, so no MLflow server is required:
+
+```bash
+pip install -r requirements-registry.txt
+python -m scripts.train_model --register --tracking-uri sqlite:///mlflow.db
+MLFLOW_TRACKING_URI=sqlite:///mlflow.db uvicorn src.api.main:app
+```
+
+With `MLFLOW_TRACKING_URI` set, the API downloads and serves the version in the Production stage. From Python:
 
 ```python
-import requests
-import json
+from src.model_registry import ModelRegistry, compare_model_versions
 
-# Send prediction request to the API
-url = "http://localhost:8000/predict"
-payload = {
-    "features": {
-        "feature1": 0.5,
-        "feature2": 1.0,
-        "feature3": "category_a"
-    },
-    "request_id": "test-123"
-}
-
-response = requests.post(url, json=payload)
-prediction = response.json()
-print(prediction)
+registry = ModelRegistry("sqlite:///mlflow.db")
+registry.get_model_versions("example_model")
+compare_model_versions(registry, "example_model", "1", "2", metric="roc_auc")
 ```
 
-### Model Drift Monitoring
+The Docker stack does not use the registry; it serves the model trained into the image.
 
-```python
-from src.monitoring.metrics import MLMetricsCollector
-from src.data_validation.drift import DriftDetector
-import pandas as pd
-
-# Initialize metrics collector
-metrics = MLMetricsCollector(model_name="fraud_detection", version="1.0")
-
-# Track model performance
-with metrics.track_predictions():
-    predictions = model.predict(features)
-    
-# Check for data drift
-detector = DriftDetector(reference_data=training_data)
-results = detector.detect_drift(current_data, threshold=0.05)
-
-if results["drift_detected"]:
-    print(f"Drift detected in features: {results['flagged_features']}")
-```
-
-### Registering a New Model
-
-```python
-from src.model_registry.client import ModelRegistry
-
-registry = ModelRegistry(tracking_uri="http://mlflow-server:5000")
-model_uri = registry.register_model(
-    model_path="path/to/model.pkl",
-    name="fraud_detection",
-    tags={"algorithm": "xgboost", "version": "1.0.0"}
-)
-```
-
-## 👍 Development
-
-### Directory Structure
+## Layout
 
 ```
-mlops-observability/
-├── docker/                 # Docker configuration files
-│   ├── prometheus/         # Prometheus configuration
-│   └── grafana/            # Grafana provisioning
-├── grafana/                # Grafana dashboards and alerts
-│   ├── dashboards/         # Dashboard templates
-│   └── alerts/             # Alert configurations
-├── src/                    # Source code
-│   ├── api/                # FastAPI service
-│   ├── monitoring/         # Metrics collection
-│   ├── data_validation/    # Schema and drift detection
-│   └── model_registry/     # Model versioning
-└── tests/                  # Test suite
-    ├── model_registry/     # Unit tests
-    ├── test_integration.py # Integration tests
-    └── test_e2e.py         # End-to-end tests
+src/
+  api/                 FastAPI app and HTTP metrics middleware
+  data_validation/     schema validation, drift detection, sliding-window monitor
+  monitoring/          Prometheus metrics for the model
+  model/               synthetic data, training, model bundle
+  model_registry/      MLflow registry client and version comparison
+scripts/
+  train_model.py       train the example model, optionally register it
+  simulate_traffic.py  send normal, invalid and drifted requests
+  check_stack.py       verify the running Docker stack
+monitoring/
+  prometheus/          scrape configuration
+  grafana/             data source, dashboard and alert rule provisioning
+tests/                 unit, API and registry tests
 ```
 
-### Contributing
+## Tests
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Implement your changes
-4. Add tests for your implementation
-5. Update documentation as needed
-6. Commit your changes (`git commit -m 'Add amazing feature'`)
-7. Push to the branch (`git push origin feature/amazing-feature`)
-8. Open a Pull Request
+```bash
+pip install -r requirements-dev.txt
+pytest -q
+```
 
-## 💡 Conclusion
+The tests train the example model and run the real API against it: predictions, validation errors, metrics output, and drift detection on drifted traffic. The registry test uses a real MLflow registry in a temporary SQLite file. On GitHub, a second job builds the Docker stack, sends traffic, and checks that Prometheus is scraping the API and that Grafana loaded the dashboard and alert rules.
 
-The MLOps Observability Platform provides a comprehensive solution for monitoring ML models in production environments. With real-time performance tracking, data quality monitoring, and automated alerting, it helps teams maintain reliable AI systems at scale.
+## Limitations
 
-Key benefits:
-- Early detection of model degradation
-- Proactive data quality management
-- Streamlined MLOps workflows
-- Enhanced model reliability and user trust
+- The model and all data are synthetic. Its scores mean nothing outside this demo.
+- There are no ground-truth labels in production, so the platform monitors inputs, errors and latency, not live accuracy.
+- The drift window and counters live in one process's memory. Several API workers would each keep their own.
+- A p-value under 0.05 flags a feature in the drift report, which will happen by chance now and then. The alert rule uses effect size instead (KS statistic above 0.2).
+- No alert contact point is configured, so firing alerts show in Grafana only.
+- No authentication on the API, and Grafana uses its default password. Local use only.
+- The registry client uses MLflow's stage-based API, which MLflow 2.9+ marks as deprecated; requirements pin MLflow 2.x.
 
-For detailed setup and usage instructions, refer to [SETUP.md](SETUP.md).
+## License
 
-## 📜 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT
